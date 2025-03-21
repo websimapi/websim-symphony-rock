@@ -146,6 +146,33 @@ body, html {
   margin-right: 10px;
 }
 
+#control-help {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  background-color: rgba(0, 0, 0, 0.7);
+  padding: 10px 15px;
+  border-radius: 5px;
+  font-size: 14px;
+  color: white;
+  z-index: 10;
+}
+
+#control-help kbd {
+  background-color: #333;
+  border-radius: 3px;
+  border: 1px solid #666;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.2);
+  color: #fff;
+  display: inline-block;
+  font-size: 0.85em;
+  font-weight: bold;
+  line-height: 1;
+  padding: 2px 4px;
+  white-space: nowrap;
+  margin: 0 2px;
+}
+
 .notification {
   position: fixed;
   top: 20px;
@@ -168,4 +195,3 @@ body, html {
   from { opacity: 1; }
   to { opacity: 0; }
 }
-

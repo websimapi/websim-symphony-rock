@@ -6,9 +6,14 @@ export const CONFIG = {
   ROCK_ROTATION_SPEED: 0.001,
   
   // Player settings
-  PLAYER_MOVE_SPEED: 0.1,
+  PLAYER_MOVE_SPEED: 0.2,  // Increased from 0.1 for better movement
   PLAYER_HEIGHT: 1.7,
   PLAYER_RADIUS: 0.5,
+  
+  // Camera settings
+  CAMERA_FOV: 75,
+  CAMERA_NEAR: 0.1,
+  CAMERA_FAR: 1000,
   
   // Audio settings
   MAX_AUDIO_DISTANCE: 20,     // Maximum distance audio can be heard from
@@ -25,4 +30,3 @@ export const CONFIG = {
   // Audio tracks 
   TRACKS_LIMIT: 50           // Maximum number of tracks stored on the rock
 };
-

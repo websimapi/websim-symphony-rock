@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CONFIG } from './config.js';
+import { PlayerControls } from './controls.js';
 
 // Initialize WebSimSocket for multiplayer
 const room = new WebsimSocket();
@@ -11,20 +11,21 @@ let currentTrack = null;
 let audioContext = null;
 let audioSources = {};
 let proximityTracking = {};
+let clock = new THREE.Clock();
+let playerControls;
 
 // Scene setup
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(
+  CONFIG.CAMERA_FOV, 
+  window.innerWidth / window.innerHeight, 
+  CONFIG.CAMERA_NEAR, 
+  CONFIG.CAMERA_FAR
+);
 const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('scene'), antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.shadowMap.enabled = true;
-
-// Controls
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.05;
-controls.maxPolarAngle = Math.PI / 2;
 
 // Lighting
 const ambientLight = new THREE.AmbientLight(0x404040);
@@ -76,10 +77,8 @@ scene.add(trackMarkersGroup);
 
 // Setup camera position
 camera.position.set(0, 10, 20);
-controls.target.set(0, CONFIG.ROCK_SIZE, 0);
-controls.update();
 
-// Player avatars container
+// Create player avatars container
 const players = {};
 
 // Initialize audio context
@@ -415,6 +414,10 @@ async function initRoom() {
   players[room.clientId] = createPlayerAvatar(room.clientId, room.peers[room.clientId].username);
   players[room.clientId].position.set(0, 0, 15);
   
+  // Initialize player controls after player is created
+  playerControls = new PlayerControls(camera, renderer.domElement, room);
+  playerControls.setPlayer(players[room.clientId]);
+  
   // Subscribe to presence updates
   room.subscribePresence(currentPresence => {
     // Add/update player avatars
@@ -472,11 +475,6 @@ async function initRoom() {
   });
 }
 
-// Input handling
-const keys = {};
-window.addEventListener('keydown', (e) => { keys[e.key] = true; });
-window.addEventListener('keyup', (e) => { keys[e.key] = false; });
-
 // Handle window resize
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -498,69 +496,16 @@ renderer.domElement.addEventListener('click', checkTrackMarkerClick);
 function animate() {
   requestAnimationFrame(animate);
   
-  // Update controls
-  controls.update();
+  const delta = clock.getDelta();
+  
+  // Update player controls
+  if (playerControls) {
+    playerControls.update(delta);
+  }
   
   // Rotate the rock slowly
   symphonyRock.rotation.y += CONFIG.ROCK_ROTATION_SPEED;
   glow.rotation.y -= CONFIG.ROCK_ROTATION_SPEED * 0.5;
-  
-  // Handle player movement
-  if (players[room.clientId]) {
-    const playerSpeed = CONFIG.PLAYER_MOVE_SPEED;
-    const playerRotation = camera.rotation.y;
-    let moved = false;
-    
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    forward.y = 0;
-    forward.normalize();
-    
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-    right.y = 0;
-    right.normalize();
-    
-    if (keys['w'] || keys['ArrowUp']) {
-      players[room.clientId].position.addScaledVector(forward, playerSpeed);
-      moved = true;
-    }
-    if (keys['s'] || keys['ArrowDown']) {
-      players[room.clientId].position.addScaledVector(forward, -playerSpeed);
-      moved = true;
-    }
-    if (keys['a'] || keys['ArrowLeft']) {
-      players[room.clientId].position.addScaledVector(right, -playerSpeed);
-      moved = true;
-    }
-    if (keys['d'] || keys['ArrowRight']) {
-      players[room.clientId].position.addScaledVector(right, playerSpeed);
-      moved = true;
-    }
-    
-    // Boundary check
-    const maxDistance = CONFIG.WORLD_SIZE / 2 - CONFIG.PLAYER_RADIUS;
-    players[room.clientId].position.x = Math.max(-maxDistance, Math.min(maxDistance, players[room.clientId].position.x));
-    players[room.clientId].position.z = Math.max(-maxDistance, Math.min(maxDistance, players[room.clientId].position.z));
-    
-    // Update player rotation to face movement direction
-    if (moved) {
-      players[room.clientId].rotation.y = Math.atan2(
-        -forward.x * (keys['w'] || keys['ArrowUp'] ? 1 : keys['s'] || keys['ArrowDown'] ? -1 : 0) - 
-        right.x * (keys['a'] || keys['ArrowLeft'] ? 1 : keys['d'] || keys['ArrowRight'] ? -1 : 0),
-        -forward.z * (keys['w'] || keys['ArrowUp'] ? 1 : keys['s'] || keys['ArrowDown'] ? -1 : 0) - 
-        right.z * (keys['a'] || keys['ArrowLeft'] ? 1 : keys['d'] || keys['ArrowRight'] ? -1 : 0)
-      );
-      
-      // Update player position in presence
-      room.updatePresence({
-        position: {
-          x: players[room.clientId].position.x,
-          y: players[room.clientId].position.y,
-          z: players[room.clientId].position.z
-        },
-        rotation: players[room.clientId].rotation.y
-      });
-    }
-  }
   
   // Update nearby players list
   updateNearbyPlayers();
@@ -573,6 +518,5 @@ function animate() {
 initRoom().then(() => {
   animate();
   updateTrackMarkers();
-  showNotification('Welcome to Symphony Rock! Move with WASD keys and click on gems to play tracks.');
+  showNotification('Welcome to Symphony Rock! Move with WASD keys, toggle view with V, and click on gems to play tracks.');
 });
-
