@@ -19,13 +19,13 @@ export class PlayerControls {
     this.orbitControls.dampingFactor = 0.05;
     this.orbitControls.maxPolarAngle = Math.PI / 2;
     this.orbitControls.minDistance = 5;
-    this.orbitControls.maxDistance = 30;
+    this.orbitControls.maxDistance = 50; // Increased from 30 for better zoom out
     
     this.firstPersonControls = new FirstPersonControls(camera, domElement);
     this.firstPersonControls.movementSpeed = 0;
     this.firstPersonControls.lookSpeed = 0.1;
     this.firstPersonControls.constrainVertical = true;
-    this.firstPersonControls.verticalMin = Math.PI / 4;
+    this.firstPersonControls.verticalMin = Math.PI / 6; // Changed from Math.PI/4 for better camera angle
     this.firstPersonControls.verticalMax = Math.PI / 2;
     this.firstPersonControls.enabled = false;
     
@@ -86,6 +86,8 @@ export class PlayerControls {
     if (this.mode === 'orbit') {
       // Update orbit controls to follow player
       this.orbitControls.target.copy(this.player.position);
+      // Add slight height offset for better view
+      this.orbitControls.target.y += CONFIG.PLAYER_HEIGHT * 0.5;
       this.orbitControls.update();
     } else {
       this.firstPersonControls.update(delta);
@@ -124,11 +126,6 @@ export class PlayerControls {
     if (moved) {
       moveDirection.normalize();
       this.player.position.addScaledVector(moveDirection, playerSpeed);
-      
-      // Boundary check
-      const maxDistance = CONFIG.WORLD_SIZE / 2 - CONFIG.PLAYER_RADIUS;
-      this.player.position.x = Math.max(-maxDistance, Math.min(maxDistance, this.player.position.x));
-      this.player.position.z = Math.max(-maxDistance, Math.min(maxDistance, this.player.position.z));
       
       // Update player rotation to face movement direction
       this.player.rotation.y = Math.atan2(-moveDirection.x, -moveDirection.z);
