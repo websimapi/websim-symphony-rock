@@ -7,7 +7,7 @@ export class TrackManager {
     this.room = room;
     this.rockPosition = new THREE.Vector3(0, CONFIG.ROCK_SIZE * 0.8, 0);
     this.trackMarkersGroup = new THREE.Group();
-    this.trackMarkersGroup.rotation.y = CONFIG.ROCK_ROTATION_Y; 
+    this.trackMarkersGroup.rotation.x = CONFIG.ROCK_ROTATION_Y; 
     this.scene.add(this.trackMarkersGroup);
     
     this.categories = {
@@ -38,7 +38,7 @@ export class TrackManager {
       const ring = this.createRing(radius, color);
       ring.position.copy(this.rockPosition);
       ring.position.y += 0.1 * index; 
-      ring.rotation.y = CONFIG.ROCK_ROTATION_Y; 
+      ring.rotation.x = CONFIG.ROCK_ROTATION_Y; 
  
       this.scene.add(ring);
       this.categoryRings[category] = { ring, radius };

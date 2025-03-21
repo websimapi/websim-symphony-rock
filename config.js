@@ -4,7 +4,7 @@ export const CONFIG = {
   ROCK_COLOR: 0xff7b00,
   ROCK_GLOW_INTENSITY: 0.5,
   ROCK_ROTATION_SPEED: 0.001,
-  ROCK_ROTATION_Y: Math.PI/2, 
+  ROCK_ROTATION_Y: Math.PI/4, // Changed from Math.PI/2 to Math.PI/4 for different axis rotation
 
   // Player settings
   PLAYER_MOVE_SPEED: 0.2,  // Increased from 0.1 for better movement

@@ -53,7 +53,7 @@ const rockMaterial = new THREE.MeshStandardMaterial({
 });
 const symphonyRock = new THREE.Mesh(rockGeometry, rockMaterial);
 symphonyRock.position.y = CONFIG.ROCK_SIZE * 0.8;
-symphonyRock.rotation.y = CONFIG.ROCK_ROTATION_Y; // Apply initial rotation
+symphonyRock.rotation.x = CONFIG.ROCK_ROTATION_Y; 
 symphonyRock.castShadow = true;
 symphonyRock.receiveShadow = true;
 scene.add(symphonyRock);
@@ -68,7 +68,7 @@ const glowMaterial = new THREE.MeshBasicMaterial({
 });
 const glow = new THREE.Mesh(glowGeometry, glowMaterial);
 glow.position.copy(symphonyRock.position);
-glow.rotation.y = CONFIG.ROCK_ROTATION_Y; // Apply initial rotation to glow effect
+glow.rotation.x = CONFIG.ROCK_ROTATION_Y; 
 scene.add(glow);
 
 // Create player avatars container
@@ -313,8 +313,8 @@ function animate() {
   }
   
   // Rotate the rock slowly
-  symphonyRock.rotation.y += CONFIG.ROCK_ROTATION_SPEED;
-  glow.rotation.y -= CONFIG.ROCK_ROTATION_SPEED * 0.5;
+  symphonyRock.rotation.x += CONFIG.ROCK_ROTATION_SPEED;
+  glow.rotation.x -= CONFIG.ROCK_ROTATION_SPEED * 0.5;
   
   // Update terrain
   if (terrain) {
