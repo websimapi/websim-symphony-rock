@@ -1,0 +1,53 @@
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Symphony Rock</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+        "howler": "https://cdn.jsdelivr.net/npm/howler@2.2.4/dist/howler.min.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="ui-container">
+    <div id="upload-container">
+      <h1>Symphony Rock</h1>
+      <p>Upload audio files to the 3D symphony rock and play with others!</p>
+      <div id="upload-form">
+        <label for="track-name">Track Name:</label>
+        <input type="text" id="track-name" placeholder="Enter track name">
+        <input type="file" id="audio-file" accept="audio/*">
+        <button id="upload-button">Upload to Rock</button>
+      </div>
+    </div>
+    
+    <div id="controls">
+      <div id="current-track">
+        <span id="track-info">No track playing</span>
+        <div id="player-controls">
+          <button id="stop-button">⏹️</button>
+          <input type="range" id="volume-slider" min="0" max="100" value="80">
+        </div>
+      </div>
+      <div id="player-list">
+        <h3>Players Nearby</h3>
+        <ul id="nearby-players"></ul>
+      </div>
+    </div>
+  </div>
+  
+  <canvas id="scene"></canvas>
+  
+  <audio id="default-track" src="/Hyrule Battle - Track 1 - Sonauto.wav" preload="auto"></audio>
+  
+  <script type="module" src="config.js"></script>
+  <script type="module" src="app.js"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
