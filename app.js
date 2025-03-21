@@ -1,21 +1,27 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { PlayerControls } from './controls.js';
+import { InfiniteTerrain } from './terrain.js';
+import { TrackManager } from './trackManager.js';
+import { AudioSystem } from './audioSystem.js';
 
 // Initialize WebSimSocket for multiplayer
 const room = new WebsimSocket();
 
-// Track data and player state
-let audioTracks = {};
-let currentTrack = null;
-let audioContext = null;
-let audioSources = {};
-let proximityTracking = {};
+// Track modules and global state
+let terrain;
+let trackManager;
+let audioSystem;
 let clock = new THREE.Clock();
 let playerControls;
+let raycaster = new THREE.Raycaster();
+let mouse = new THREE.Vector2();
 
 // Scene setup
 const scene = new THREE.Scene();
+scene.background = new THREE.Color(CONFIG.SKY_COLOR);
+scene.fog = new THREE.FogExp2(CONFIG.SKY_COLOR, 0.01);
+
 const camera = new THREE.PerspectiveCamera(
   CONFIG.CAMERA_FOV, 
   window.innerWidth / window.innerHeight, 
@@ -35,14 +41,6 @@ const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
 directionalLight.position.set(10, 20, 10);
 directionalLight.castShadow = true;
 scene.add(directionalLight);
-
-// Ground
-const groundGeometry = new THREE.PlaneGeometry(CONFIG.WORLD_SIZE, CONFIG.WORLD_SIZE);
-const groundMaterial = new THREE.MeshStandardMaterial({ color: CONFIG.GROUND_COLOR });
-const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-ground.rotation.x = -Math.PI / 2;
-ground.receiveShadow = true;
-scene.add(ground);
 
 // Create the Symphony Rock
 const rockGeometry = new THREE.DodecahedronGeometry(CONFIG.ROCK_SIZE, 1);
@@ -71,21 +69,23 @@ const glow = new THREE.Mesh(glowGeometry, glowMaterial);
 glow.position.copy(symphonyRock.position);
 scene.add(glow);
 
-// Add track markers around the rock
-const trackMarkersGroup = new THREE.Group();
-scene.add(trackMarkersGroup);
+// Create player avatars container
+const players = {};
 
 // Setup camera position
 camera.position.set(0, 10, 20);
 
-// Create player avatars container
-const players = {};
-
-// Initialize audio context
-function initAudioContext() {
-  if (!audioContext) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  }
+// Show a notification
+function showNotification(message) {
+  const notification = document.createElement('div');
+  notification.className = 'notification';
+  notification.textContent = message;
+  document.body.appendChild(notification);
+  
+  // Remove notification after animation completes
+  setTimeout(() => {
+    notification.remove();
+  }, 3000);
 }
 
 // Create player avatar
@@ -156,273 +156,40 @@ function createPlayerAvatar(clientId, username) {
   return playerGroup;
 }
 
-// Update track markers
-function updateTrackMarkers() {
-  // Clear existing markers
-  while (trackMarkersGroup.children.length > 0) {
-    trackMarkersGroup.remove(trackMarkersGroup.children[0]);
-  }
-  
-  if (!room.roomState.tracks) return;
-  
-  const trackIds = Object.keys(room.roomState.tracks);
-  const numTracks = trackIds.length;
-  
-  trackIds.forEach((trackId, index) => {
-    const angle = (index / numTracks) * Math.PI * 2;
-    const radius = CONFIG.ROCK_SIZE * 1.5;
-    
-    const x = Math.sin(angle) * radius;
-    const z = Math.cos(angle) * radius;
-    
-    const markerGeometry = new THREE.SphereGeometry(0.3, 16, 16);
-    const markerMaterial = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      emissive: CONFIG.ROCK_COLOR,
-      emissiveIntensity: 0.5
-    });
-    
-    const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-    marker.position.set(x, CONFIG.ROCK_SIZE * 0.8, z);
-    marker.userData = { trackId };
-    
-    trackMarkersGroup.add(marker);
-  });
-}
+// Handle window resize
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
 
-// Play a track
-async function playTrack(trackId, broadcast = true) {
-  initAudioContext();
-  
-  // Stop any currently playing track
-  stopCurrentTrack();
-  
-  if (!room.roomState.tracks || !room.roomState.tracks[trackId]) {
-    return;
-  }
-  
-  const trackInfo = room.roomState.tracks[trackId];
-  currentTrack = trackId;
-  
-  // Update UI
-  document.getElementById('track-info').textContent = `Playing: ${trackInfo.name}`;
-  
-  try {
-    // Create new audio source from track URL
-    const audioElement = new Audio(trackInfo.url);
-    audioElement.crossOrigin = "anonymous";
-    audioElement.loop = true;
-    await audioElement.play();
-    
-    const source = audioContext.createMediaElementSource(audioElement);
-    const gainNode = audioContext.createGain();
-    
-    source.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    // Set volume from slider
-    const volumeSlider = document.getElementById('volume-slider');
-    gainNode.gain.value = volumeSlider.value / 100;
-    
-    audioSources[trackId] = {
-      audio: audioElement,
-      source,
-      gain: gainNode
-    };
-    
-    // Show audio icon above player
-    if (players[room.clientId]) {
-      const audioIcon = players[room.clientId].children.find(child => child.geometry instanceof THREE.PlaneGeometry);
-      if (audioIcon) audioIcon.visible = true;
-    }
-    
-    // Broadcast to nearby players if this is initiated by this client
-    if (broadcast) {
-      room.updatePresence({
-        playingTrackId: trackId
-      });
-    }
-    
-    showNotification(`Now playing: ${trackInfo.name}`);
-  } catch (error) {
-    console.error('Error playing track:', error);
-    showNotification('Failed to play track');
-  }
-}
-
-// Stop current track
-function stopCurrentTrack() {
-  if (currentTrack && audioSources[currentTrack]) {
-    const { audio, source, gain } = audioSources[currentTrack];
-    audio.pause();
-    audio.currentTime = 0;
-    
-    // Clean up audio connections
-    try {
-      source.disconnect();
-      gain.disconnect();
-    } catch (e) {
-      console.warn('Error disconnecting audio:', e);
-    }
-    
-    delete audioSources[currentTrack];
-    currentTrack = null;
-    
-    // Update UI
-    document.getElementById('track-info').textContent = 'No track playing';
-    
-    // Hide audio icon above player
-    if (players[room.clientId]) {
-      const audioIcon = players[room.clientId].children.find(child => child.geometry instanceof THREE.PlaneGeometry);
-      if (audioIcon) audioIcon.visible = false;
-    }
-    
-    // Update presence
-    room.updatePresence({
-      playingTrackId: null
-    });
-  }
-}
-
-// Handle file upload
-async function uploadTrack() {
-  const trackNameInput = document.getElementById('track-name');
-  const fileInput = document.getElementById('audio-file');
-  
-  const trackName = trackNameInput.value.trim() || 'Unnamed Track';
-  const file = fileInput.files[0];
-  
-  if (!file) {
-    showNotification('Please select an audio file');
-    return;
-  }
-  
-  try {
-    showNotification('Uploading track...');
-    
-    // Upload to blob storage
-    const url = await window.websim.upload(file);
-    
-    // Generate a unique ID for the track
-    const trackId = `track-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    
-    // Add track to room state
-    const tracks = room.roomState.tracks || {};
-    
-    // Limit the number of tracks
-    const trackIds = Object.keys(tracks);
-    if (trackIds.length >= CONFIG.TRACKS_LIMIT) {
-      // Remove oldest track if we've reached the limit
-      const oldestTrackId = trackIds[0];
-      delete tracks[oldestTrackId];
-    }
-    
-    // Add new track
-    tracks[trackId] = {
-      name: trackName,
-      url: url,
-      uploadedBy: room.peers[room.clientId].username,
-      timestamp: Date.now()
-    };
-    
-    // Update room state
-    room.updateRoomState({ tracks });
-    
-    // Clear form
-    trackNameInput.value = '';
-    fileInput.value = '';
-    
-    showNotification('Track added to Symphony Rock!');
-  } catch (error) {
-    console.error('Error uploading track:', error);
-    showNotification('Failed to upload track');
-  }
-}
-
-// Show a notification
-function showNotification(message) {
-  const notification = document.createElement('div');
-  notification.className = 'notification';
-  notification.textContent = message;
-  document.body.appendChild(notification);
-  
-  // Remove notification after animation completes
-  setTimeout(() => {
-    notification.remove();
-  }, 3000);
-}
-
-// Update player list based on proximity
-function updateNearbyPlayers() {
-  const playerListEl = document.getElementById('nearby-players');
-  playerListEl.innerHTML = '';
-  
-  const myPosition = players[room.clientId] ? players[room.clientId].position : new THREE.Vector3();
-  
-  Object.keys(room.peers).forEach(clientId => {
-    if (clientId === room.clientId) return; // Skip self
-    
-    const peer = room.peers[clientId];
-    const peerPresence = room.presence[clientId] || {};
-    
-    if (!peerPresence.position) return; // Skip players without position
-    
-    const peerPosition = new THREE.Vector3(
-      peerPresence.position.x,
-      peerPresence.position.y,
-      peerPresence.position.z
-    );
-    
-    const distance = myPosition.distanceTo(peerPosition);
-    
-    // Track if player is within proximity
-    const wasInProximity = proximityTracking[clientId] || false;
-    const isInProximity = distance < CONFIG.PROXIMITY_THRESHOLD;
-    proximityTracking[clientId] = isInProximity;
-    
-    // If player entered proximity
-    if (!wasInProximity && isInProximity) {
-      showNotification(`${peer.username} is nearby`);
-    }
-    
-    // Add to nearby list if in proximity
-    if (isInProximity) {
-      const listItem = document.createElement('li');
-      
-      const avatar = document.createElement('img');
-      avatar.className = 'player-avatar';
-      avatar.src = `https://images.websim.ai/avatar/${peer.username}`;
-      
-      const nameSpan = document.createElement('span');
-      nameSpan.textContent = peer.username;
-      
-      if (peerPresence.playingTrackId && room.roomState.tracks && room.roomState.tracks[peerPresence.playingTrackId]) {
-        nameSpan.textContent += ` (Playing: ${room.roomState.tracks[peerPresence.playingTrackId].name})`;
-      }
-      
-      listItem.appendChild(avatar);
-      listItem.appendChild(nameSpan);
-      playerListEl.appendChild(listItem);
-    }
-  });
-}
-
-// Check for track marker clicks
-function checkTrackMarkerClick(event) {
-  const mouse = new THREE.Vector2();
+// Track mouse movement for hover effects
+window.addEventListener('mousemove', (event) => {
   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-  
-  const raycaster = new THREE.Raycaster();
+});
+
+// Event listeners
+document.getElementById('upload-button').addEventListener('click', () => {
+  if (audioSystem) audioSystem.uploadTrack();
+});
+document.getElementById('stop-button').addEventListener('click', () => {
+  if (audioSystem) audioSystem.stopCurrentTrack();
+});
+document.getElementById('volume-slider').addEventListener('input', (e) => {
+  if (audioSystem) audioSystem.updateVolume(e.target.value / 100);
+});
+
+// Check for track marker clicks
+renderer.domElement.addEventListener('click', (event) => {
   raycaster.setFromCamera(mouse, camera);
-  
-  const intersects = raycaster.intersectObjects(trackMarkersGroup.children);
-  
-  if (intersects.length > 0) {
-    const trackId = intersects[0].object.userData.trackId;
-    playTrack(trackId);
+  if (trackManager) {
+    const hoveredMarker = trackManager.handleMarkerHover(raycaster, camera);
+    if (hoveredMarker && hoveredMarker.userData.trackId && audioSystem) {
+      audioSystem.playTrack(hoveredMarker.userData.trackId);
+    }
   }
-}
+});
 
 // Initialize room
 async function initRoom() {
@@ -441,7 +208,8 @@ async function initRoom() {
           name: defaultTrackName,
           url: defaultTrackUrl,
           uploadedBy: 'System',
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          tags: ['energetic']
         }
       }
     });
@@ -458,9 +226,19 @@ async function initRoom() {
   players[room.clientId] = createPlayerAvatar(room.clientId, room.peers[room.clientId].username);
   players[room.clientId].position.set(0, 0, 15);
   
-  // Initialize player controls after player is created
+  // Initialize systems after player is created
   playerControls = new PlayerControls(camera, renderer.domElement, room);
   playerControls.setPlayer(players[room.clientId]);
+  
+  // Initialize terrain system
+  terrain = new InfiniteTerrain(scene, players[room.clientId]);
+  
+  // Initialize track manager
+  trackManager = new TrackManager(scene, room);
+  trackManager.updateTrackMarkers();
+  
+  // Initialize audio system
+  audioSystem = new AudioSystem(room, players);
   
   // Subscribe to presence updates
   room.subscribePresence(currentPresence => {
@@ -497,19 +275,8 @@ async function initRoom() {
       
       // Handle remote player playing a track
       if (clientId !== room.clientId && presence.playingTrackId && 
-          (!currentTrack || currentTrack !== presence.playingTrackId)) {
-        // Calculate distance to determine if we should play the track
-        const myPosition = players[room.clientId] ? players[room.clientId].position : new THREE.Vector3();
-        const theirPosition = presence.position ? 
-          new THREE.Vector3(presence.position.x, presence.position.y, presence.position.z) : 
-          new THREE.Vector3();
-        
-        const distance = myPosition.distanceTo(theirPosition);
-        
-        // Only play if player is within audio distance
-        if (distance < CONFIG.MAX_AUDIO_DISTANCE) {
-          playTrack(presence.playingTrackId, false);
-        }
+          audioSystem && !audioSystem.isTrackPlaying(presence.playingTrackId)) {
+        audioSystem.handleRemoteTrackPlay(clientId, presence.playingTrackId);
       }
     });
     
@@ -518,85 +285,17 @@ async function initRoom() {
       if (!currentPresence[clientId]) {
         scene.remove(players[clientId]);
         delete players[clientId];
-        delete proximityTracking[clientId];
       }
     });
     
     // Update nearby player list
-    updateNearbyPlayers();
+    if (audioSystem) audioSystem.updateNearbyPlayers();
   });
   
   // Subscribe to room state updates
   room.subscribeRoomState(state => {
     // Update track markers when tracks change
-    updateTrackMarkers();
-    
-    // Get available tracks
-    audioTracks = state.tracks || {};
-  });
-}
-
-// Handle window resize
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
-
-// Event listeners
-document.getElementById('upload-button').addEventListener('click', uploadTrack);
-document.getElementById('stop-button').addEventListener('click', stopCurrentTrack);
-document.getElementById('volume-slider').addEventListener('input', (e) => {
-  if (currentTrack && audioSources[currentTrack]) {
-    audioSources[currentTrack].gain.gain.value = e.target.value / 100;
-  }
-});
-renderer.domElement.addEventListener('click', checkTrackMarkerClick);
-
-// Update audio volume based on distance
-function updateAudioLevels() {
-  Object.keys(room.presence).forEach(clientId => {
-    const presence = room.presence[clientId];
-    
-    // Skip if not playing a track
-    if (!presence.playingTrackId || !room.roomState.tracks || !room.roomState.tracks[presence.playingTrackId]) {
-      return;
-    }
-    
-    // Skip if no position data
-    if (!presence.position || !players[room.clientId]) {
-      return;
-    }
-    
-    // Calculate distance between listener and audio source
-    const listenerPos = players[room.clientId].position;
-    const sourcePos = new THREE.Vector3(
-      presence.position.x,
-      presence.position.y,
-      presence.position.z
-    );
-    
-    const distance = listenerPos.distanceTo(sourcePos);
-    
-    // Update volume based on distance
-    if (clientId === room.clientId && currentTrack && audioSources[currentTrack]) {
-      // Own audio - keep at set volume
-      const volumeSlider = document.getElementById('volume-slider');
-      audioSources[currentTrack].gain.gain.value = volumeSlider.value / 100;
-    } else if (currentTrack === presence.playingTrackId && audioSources[currentTrack]) {
-      // Remote audio - fade with distance
-      let volume = 1 - Math.min(distance / CONFIG.MAX_AUDIO_DISTANCE, 1);
-      volume = Math.pow(volume, CONFIG.AUDIO_ROLLOFF_FACTOR);
-      
-      // Apply volume attenuation
-      const volumeSlider = document.getElementById('volume-slider');
-      audioSources[currentTrack].gain.gain.value = (volumeSlider.value / 100) * volume;
-      
-      // Stop playing if too far away
-      if (distance > CONFIG.MAX_AUDIO_DISTANCE && currentTrack === presence.playingTrackId) {
-        stopCurrentTrack();
-      }
-    }
+    if (trackManager) trackManager.updateTrackMarkers();
   });
 }
 
@@ -615,11 +314,21 @@ function animate() {
   symphonyRock.rotation.y += CONFIG.ROCK_ROTATION_SPEED;
   glow.rotation.y -= CONFIG.ROCK_ROTATION_SPEED * 0.5;
   
-  // Update audio levels based on distances
-  updateAudioLevels();
+  // Update terrain
+  if (terrain) {
+    terrain.update();
+  }
   
-  // Update nearby players list
-  updateNearbyPlayers();
+  // Update audio system
+  if (audioSystem) {
+    audioSystem.update();
+  }
+  
+  // Update marker hover effects
+  if (trackManager) {
+    raycaster.setFromCamera(mouse, camera);
+    trackManager.handleMarkerHover(raycaster, camera);
+  }
   
   // Render the scene
   renderer.render(scene, camera);
@@ -628,6 +337,5 @@ function animate() {
 // Initialize and start
 initRoom().then(() => {
   animate();
-  updateTrackMarkers();
   showNotification('Welcome to Symphony Rock! Move with WASD keys, toggle view with V, and click on gems to play tracks.');
 });

@@ -20,9 +20,15 @@ export const CONFIG = {
   AUDIO_ROLLOFF_FACTOR: 1.5,  // How quickly audio fades with distance
   
   // World settings
-  WORLD_SIZE: 50,            // Size of the ground plane
-  GROUND_COLOR: 0x222222,    // Color of the ground
-  SKY_COLOR: 0x000022,       // Color of the sky
+  WORLD_SIZE: 50,            // Size of the ground plane (legacy)
+  GROUND_COLOR: 0x558855,    // Color of the ground (changed to more grass-like)
+  SKY_COLOR: 0x1a1a2a,       // Color of the sky (deeper blue)
+  
+  // Terrain settings (new)
+  CHUNK_SIZE: 50,            // Size of each terrain chunk
+  VISIBLE_CHUNKS: 5,         // Number of chunks visible in each direction
+  TERRAIN_HEIGHT: 1.0,       // Maximum height of terrain
+  TEXTURE_REPEAT: 8,         // How many times to repeat ground texture
   
   // Proximity settings for player interaction
   PROXIMITY_THRESHOLD: 10,   // Distance at which players are considered "nearby"
