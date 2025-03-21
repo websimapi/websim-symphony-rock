@@ -7,6 +7,7 @@ export class TrackManager {
     this.room = room;
     this.rockPosition = new THREE.Vector3(0, CONFIG.ROCK_SIZE * 0.8, 0);
     this.trackMarkersGroup = new THREE.Group();
+    this.trackMarkersGroup.rotation.y = CONFIG.ROCK_ROTATION_Y; 
     this.scene.add(this.trackMarkersGroup);
     
     this.categories = {
@@ -22,7 +23,6 @@ export class TrackManager {
     
     this.setupCategoryRings();
     
-    // Create floating text for category names
     this.categoryLabels = {};
     this.createCategoryLabels();
   }
@@ -37,8 +37,9 @@ export class TrackManager {
       
       const ring = this.createRing(radius, color);
       ring.position.copy(this.rockPosition);
-      ring.position.y += 0.1 * index; // Slight vertical offset
-      
+      ring.position.y += 0.1 * index; 
+      ring.rotation.y = CONFIG.ROCK_ROTATION_Y; 
+ 
       this.scene.add(ring);
       this.categoryRings[category] = { ring, radius };
     });
@@ -60,10 +61,14 @@ export class TrackManager {
   createCategoryLabels() {
     Object.entries(this.categories).forEach(([key, data], index) => {
       const radius = this.categoryRings[key].radius;
-      const position = new THREE.Vector3(radius, this.rockPosition.y + 1, 0);
+      
+      const angle = CONFIG.ROCK_ROTATION_Y;
+      const x = Math.cos(angle) * radius;
+      const z = Math.sin(angle) * radius;
+      
+      const position = new THREE.Vector3(x, this.rockPosition.y + 1, z);
       position.add(this.rockPosition);
       
-      // Create text sprite
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
       canvas.width = 256;
@@ -92,23 +97,19 @@ export class TrackManager {
   determineCategory(trackInfo) {
     const ageInDays = (Date.now() - trackInfo.timestamp) / (1000 * 60 * 60 * 24);
     
-    // Check if recently uploaded (less than 3 days old)
     if (ageInDays < 3) {
       return 'recent';
     }
     
-    // Use tags if available
     if (trackInfo.tags) {
       if (trackInfo.tags.includes('ambient')) return 'ambient';
       if (trackInfo.tags.includes('energetic')) return 'energetic';
     }
     
-    // Fallback category
     return 'other';
   }
   
   updateTrackMarkers() {
-    // Clear existing markers
     while (this.trackMarkersGroup.children.length > 0) {
       this.trackMarkersGroup.remove(this.trackMarkersGroup.children[0]);
     }
@@ -119,7 +120,6 @@ export class TrackManager {
     
     const trackIds = Object.keys(this.room.roomState.tracks);
     
-    // Group tracks by category
     const tracksByCategory = {};
     Object.entries(this.categories).forEach(([category]) => {
       tracksByCategory[category] = [];
@@ -131,7 +131,6 @@ export class TrackManager {
       tracksByCategory[category].push(trackId);
     });
     
-    // Create markers for each category
     Object.entries(tracksByCategory).forEach(([category, categoryTrackIds]) => {
       const ringInfo = this.categoryRings[category];
       const numTracks = categoryTrackIds.length;
@@ -158,10 +157,8 @@ export class TrackManager {
         );
         marker.userData = { trackId };
         
-        // Add hover effect
         marker.userData.originalScale = marker.scale.clone();
         
-        // Add label
         this.addTrackLabel(marker, this.room.roomState.tracks[trackId].name);
         
         this.trackMarkersGroup.add(marker);
@@ -191,7 +188,7 @@ export class TrackManager {
     const sprite = new THREE.Sprite(spriteMaterial);
     sprite.position.y = 0.5;
     sprite.scale.set(2, 0.5, 1);
-    sprite.visible = false; // Initially hidden
+    sprite.visible = false; 
     
     marker.add(sprite);
     marker.userData.label = sprite;
@@ -200,7 +197,6 @@ export class TrackManager {
   handleMarkerHover(raycaster, camera) {
     const intersects = raycaster.intersectObjects(this.trackMarkersGroup.children);
     
-    // Reset all markers first
     Object.values(this.trackMarkers).forEach(marker => {
       marker.scale.copy(marker.userData.originalScale);
       if (marker.userData.label) {
@@ -208,12 +204,10 @@ export class TrackManager {
       }
     });
     
-    // Handle hover effect
     if (intersects.length > 0) {
       const hoveredMarker = intersects[0].object;
       hoveredMarker.scale.multiplyScalar(1.3);
       
-      // Show label
       if (hoveredMarker.userData.label) {
         hoveredMarker.userData.label.visible = true;
       }

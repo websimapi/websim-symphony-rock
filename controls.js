@@ -75,7 +75,7 @@ export class PlayerControls {
       this.orbitControls.enabled = true;
       this.firstPersonControls.enabled = false;
       
-      // Reset orbit controls target to rock
+      // Reset orbit controls target to rock with the rotated position
       this.orbitControls.target.set(0, CONFIG.ROCK_SIZE, 0);
     }
   }
