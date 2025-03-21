@@ -84,6 +84,8 @@ export class PlayerControls {
     if (!this.controlsEnabled || !this.player) return;
     
     if (this.mode === 'orbit') {
+      // Update orbit controls to follow player
+      this.orbitControls.target.copy(this.player.position);
       this.orbitControls.update();
     } else {
       this.firstPersonControls.update(delta);

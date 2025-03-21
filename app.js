@@ -116,10 +116,41 @@ function createPlayerAvatar(clientId, username) {
   sprite.position.y = CONFIG.PLAYER_HEIGHT + 0.5;
   sprite.scale.set(3, 0.75, 1);
   
+  // Add audio icon (initially hidden)
+  const audioIconGeometry = new THREE.PlaneGeometry(1, 1);
+  const audioIconCanvas = document.createElement('canvas');
+  const iconContext = audioIconCanvas.getContext('2d');
+  audioIconCanvas.width = 64;
+  audioIconCanvas.height = 64;
+  
+  // Draw audio icon
+  iconContext.fillStyle = '#ff7b00';
+  iconContext.beginPath();
+  iconContext.arc(32, 32, 20, 0, Math.PI * 2);
+  iconContext.fill();
+  iconContext.fillStyle = '#ffffff';
+  iconContext.beginPath();
+  iconContext.moveTo(22, 22);
+  iconContext.lineTo(22, 42);
+  iconContext.lineTo(42, 32);
+  iconContext.closePath();
+  iconContext.fill();
+  
+  const audioIconTexture = new THREE.CanvasTexture(audioIconCanvas);
+  const audioIconMaterial = new THREE.MeshBasicMaterial({ 
+    map: audioIconTexture,
+    transparent: true,
+    opacity: 0.8,
+  });
+  const audioIcon = new THREE.Mesh(audioIconGeometry, audioIconMaterial);
+  audioIcon.position.y = CONFIG.PLAYER_HEIGHT + 1.2;
+  audioIcon.visible = false;
+  
   // Create player group
   const playerGroup = new THREE.Group();
   playerGroup.add(avatar);
   playerGroup.add(sprite);
+  playerGroup.add(audioIcon);
   scene.add(playerGroup);
   
   return playerGroup;
@@ -180,6 +211,7 @@ async function playTrack(trackId, broadcast = true) {
     // Create new audio source from track URL
     const audioElement = new Audio(trackInfo.url);
     audioElement.crossOrigin = "anonymous";
+    audioElement.loop = true;
     await audioElement.play();
     
     const source = audioContext.createMediaElementSource(audioElement);
@@ -197,6 +229,12 @@ async function playTrack(trackId, broadcast = true) {
       source,
       gain: gainNode
     };
+    
+    // Show audio icon above player
+    if (players[room.clientId]) {
+      const audioIcon = players[room.clientId].children.find(child => child.geometry instanceof THREE.PlaneGeometry);
+      if (audioIcon) audioIcon.visible = true;
+    }
     
     // Broadcast to nearby players if this is initiated by this client
     if (broadcast) {
@@ -232,6 +270,12 @@ function stopCurrentTrack() {
     
     // Update UI
     document.getElementById('track-info').textContent = 'No track playing';
+    
+    // Hide audio icon above player
+    if (players[room.clientId]) {
+      const audioIcon = players[room.clientId].children.find(child => child.geometry instanceof THREE.PlaneGeometry);
+      if (audioIcon) audioIcon.visible = false;
+    }
     
     // Update presence
     room.updatePresence({
@@ -440,13 +484,30 @@ async function initRoom() {
         if (presence.rotation !== undefined) {
           players[clientId].rotation.y = presence.rotation;
         }
+        
+        // Update audio icon visibility
+        if (presence.playingTrackId && players[clientId]) {
+          const audioIcon = players[clientId].children.find(child => child.geometry instanceof THREE.PlaneGeometry);
+          if (audioIcon) audioIcon.visible = true;
+        } else if (players[clientId]) {
+          const audioIcon = players[clientId].children.find(child => child.geometry instanceof THREE.PlaneGeometry);
+          if (audioIcon) audioIcon.visible = false;
+        }
       }
       
       // Handle remote player playing a track
       if (clientId !== room.clientId && presence.playingTrackId && 
           (!currentTrack || currentTrack !== presence.playingTrackId)) {
-        // Only play if player is nearby
-        if (proximityTracking[clientId]) {
+        // Calculate distance to determine if we should play the track
+        const myPosition = players[room.clientId] ? players[room.clientId].position : new THREE.Vector3();
+        const theirPosition = presence.position ? 
+          new THREE.Vector3(presence.position.x, presence.position.y, presence.position.z) : 
+          new THREE.Vector3();
+        
+        const distance = myPosition.distanceTo(theirPosition);
+        
+        // Only play if player is within audio distance
+        if (distance < CONFIG.MAX_AUDIO_DISTANCE) {
           playTrack(presence.playingTrackId, false);
         }
       }
@@ -492,6 +553,53 @@ document.getElementById('volume-slider').addEventListener('input', (e) => {
 });
 renderer.domElement.addEventListener('click', checkTrackMarkerClick);
 
+// Update audio volume based on distance
+function updateAudioLevels() {
+  Object.keys(room.presence).forEach(clientId => {
+    const presence = room.presence[clientId];
+    
+    // Skip if not playing a track
+    if (!presence.playingTrackId || !room.roomState.tracks || !room.roomState.tracks[presence.playingTrackId]) {
+      return;
+    }
+    
+    // Skip if no position data
+    if (!presence.position || !players[room.clientId]) {
+      return;
+    }
+    
+    // Calculate distance between listener and audio source
+    const listenerPos = players[room.clientId].position;
+    const sourcePos = new THREE.Vector3(
+      presence.position.x,
+      presence.position.y,
+      presence.position.z
+    );
+    
+    const distance = listenerPos.distanceTo(sourcePos);
+    
+    // Update volume based on distance
+    if (clientId === room.clientId && currentTrack && audioSources[currentTrack]) {
+      // Own audio - keep at set volume
+      const volumeSlider = document.getElementById('volume-slider');
+      audioSources[currentTrack].gain.gain.value = volumeSlider.value / 100;
+    } else if (currentTrack === presence.playingTrackId && audioSources[currentTrack]) {
+      // Remote audio - fade with distance
+      let volume = 1 - Math.min(distance / CONFIG.MAX_AUDIO_DISTANCE, 1);
+      volume = Math.pow(volume, CONFIG.AUDIO_ROLLOFF_FACTOR);
+      
+      // Apply volume attenuation
+      const volumeSlider = document.getElementById('volume-slider');
+      audioSources[currentTrack].gain.gain.value = (volumeSlider.value / 100) * volume;
+      
+      // Stop playing if too far away
+      if (distance > CONFIG.MAX_AUDIO_DISTANCE && currentTrack === presence.playingTrackId) {
+        stopCurrentTrack();
+      }
+    }
+  });
+}
+
 // Game loop
 function animate() {
   requestAnimationFrame(animate);
@@ -506,6 +614,9 @@ function animate() {
   // Rotate the rock slowly
   symphonyRock.rotation.y += CONFIG.ROCK_ROTATION_SPEED;
   glow.rotation.y -= CONFIG.ROCK_ROTATION_SPEED * 0.5;
+  
+  // Update audio levels based on distances
+  updateAudioLevels();
   
   // Update nearby players list
   updateNearbyPlayers();
